@@ -114,14 +114,12 @@ macro(_launcher_process_args)
 		ARGS
 		RUNTIME_LIBRARY_DIRS
 		WORKING_DIRECTORY
-		ENVIRONMENT
-		TARGET_PLATFORM)
+		ENVIRONMENT)
 	set(_bool_args FORWARD_ARGS)
 	foreach(_arg ${_val_args} ${_bool_args})
 		set(${_arg})
 	endforeach()
 	foreach(_element ${ARGN})
-		string(REPLACE ";" "\\;" _element "${_element}")
 		list(FIND _val_args "${_element}" _val_arg_find)
 		list(FIND _bool_args "${_element}" _bool_arg_find)
 		if("${_val_arg_find}" GREATER "-1")
@@ -160,31 +158,22 @@ macro(_launcher_process_args)
 		set(FWD_ARGS)
 	endif()
 
-	if(TARGET_PLATFORM)
-		set(USERFILE_PLATFORM ${TARGET_PLATFORM})
-	endif()
-
 	set(USERFILE_WORKING_DIRECTORY "${WORKING_DIRECTORY}")
 	set(USERFILE_COMMAND_ARGUMENTS "${ARGS}")
 	set(LAUNCHERSCRIPT_COMMAND_ARGUMENTS "${ARGS} ${FWD_ARGS}")
 
 	if(WIN32)
-		if(_runtime_lib_dirs)
-			set(RUNTIME_LIBRARIES_ENVIRONMENT "PATH=${_runtime_lib_dirs};%PATH%")
-		endif()
+		set(RUNTIME_LIBRARIES_ENVIRONMENT "PATH=${_runtime_lib_dirs};%PATH%")
 		file(READ
 			"${_launchermoddir}/launcher.env.cmd.in"
 			_cmdenv)
 	else()
-		if(_runtime_lib_dirs)
-			if(APPLE)
-
-				set(RUNTIME_LIBRARIES_ENVIRONMENT
-					"DYLD_LIBRARY_PATH=${_runtime_lib_dirs}:$DYLD_LIBRARY_PATH")
-			else()
-				set(RUNTIME_LIBRARIES_ENVIRONMENT
-					"LD_LIBRARY_PATH=${_runtime_lib_dirs}:$LD_LIBRARY_PATH")
-			endif()
+		if(APPLE)
+			set(RUNTIME_LIBRARIES_ENVIRONMENT
+				"DYLD_LIBRARY_PATH=${_runtime_lib_dirs}:$DYLD_LIBRARY_PATH")
+		else()
+			set(RUNTIME_LIBRARIES_ENVIRONMENT
+				"LD_LIBRARY_PATH=${_runtime_lib_dirs}:$LD_LIBRARY_PATH")
 		endif()
 		file(READ
 			"${_launchermoddir}/launcher.env.sh.in"
@@ -194,12 +183,10 @@ macro(_launcher_process_args)
 
 	set(USERFILE_ENV_COMMANDS)
 	foreach(_arg "${RUNTIME_LIBRARIES_ENVIRONMENT}" ${ENVIRONMENT})
-		if(_arg)
-			string(CONFIGURE
-				"@USERFILE_ENVIRONMENT@@LAUNCHER_LINESEP@@_arg@"
-				USERFILE_ENVIRONMENT
-				@ONLY)
-		endif()
+		string(CONFIGURE
+			"@USERFILE_ENVIRONMENT@@LAUNCHER_LINESEP@@_arg@"
+			USERFILE_ENVIRONMENT
+			@ONLY)
 		string(CONFIGURE
 			"@USERFILE_ENV_COMMANDS@${_cmdenv}"
 			USERFILE_ENV_COMMANDS
@@ -212,24 +199,16 @@ macro(_launcher_produce_vcproj_user)
 		file(READ
 			"${_launchermoddir}/perconfig.${VCPROJ_TYPE}.user.in"
 			_perconfig)
+		file(TO_NATIVE_PATH "${USERFILE_WORKING_DIRECTORY}" NATIVE_WORKING_DIRECTORY)
 		set(USERFILE_CONFIGSECTIONS)
 		foreach(USERFILE_CONFIGNAME ${CMAKE_CONFIGURATION_TYPES})
-			get_target_property(USERFILE_${USERFILE_CONFIGNAME}_COMMAND
-				${_targetname}
-				LOCATION_${USERFILE_CONFIGNAME})
-			file(TO_NATIVE_PATH
-				"${USERFILE_${USERFILE_CONFIGNAME}_COMMAND}"
-				USERFILE_${USERFILE_CONFIGNAME}_COMMAND)
 			string(CONFIGURE "${_perconfig}" _temp @ONLY ESCAPE_QUOTES)
-			string(CONFIGURE
-				"${USERFILE_CONFIGSECTIONS}${_temp}"
-				USERFILE_CONFIGSECTIONS
-				ESCAPE_QUOTES)
+			set(USERFILE_CONFIGSECTIONS "${USERFILE_CONFIGSECTIONS}${_temp}")
 		endforeach()
 
 
 		configure_file("${_launchermoddir}/${VCPROJ_TYPE}.user.in"
-			${VCPROJNAME}.${VCPROJ_TYPE}.${USERFILE_EXTENSION}
+			"${VCPROJNAME}.${VCPROJ_TYPE}.${USERFILE_EXTENSION}"
 			@ONLY)
 	endif()
 
@@ -247,33 +226,16 @@ macro(_launcher_configure_executable _src _tmp _target)
 endmacro()
 
 macro(_launcher_create_target_launcher)
-	if(CMAKE_CONFIGURATION_TYPES)
-		# Multi-config generator - multiple launchers
-		foreach(_config ${CMAKE_CONFIGURATION_TYPES})
-			get_target_property(USERFILE_${_config}_COMMAND
-				${_targetname}
-				LOCATION_${_config})
-			file(TO_NATIVE_PATH
-				"${USERFILE_${_config}_COMMAND}"
-				USERFILE_COMMAND)
-			set(_fn "launch-${_targetname}-${_config}.${_suffix}")
-			_launcher_configure_executable("${_launchermoddir}/targetlauncher.${_suffix}.in"
-			    "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_fn}"
-			    "${CMAKE_CURRENT_BINARY_DIR}/${_fn}")
-		endforeach()
-	else()
-		# Single-config generator - single launcher
-		get_target_property(USERFILE_COMMAND
-			${_targetname}
-			LOCATION)
-		file(TO_NATIVE_PATH
-			"${USERFILE_COMMAND}"
-			USERFILE_COMMAND)
-		_launcher_configure_executable("${_launchermoddir}/targetlauncher.${_suffix}.in"
-		    "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/launch-${_targetname}.${_suffix}"
-			"${CMAKE_CURRENT_BINARY_DIR}/launch-${_targetname}.${_suffix}"
-			@ONLY)
-	endif()
+	set(TARGET_NAME ${_targetname})
+	
+	set(_fn "launch-${_targetname}-generator.${_suffix}")
+	
+	configure_file("${_launchermoddir}/targetlauncher.${_suffix}.in" 
+					"${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_fn}"
+					@ONLY)
+	
+	file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/launch-${_targetname}-$<CONFIGURATION>.${_suffix}"
+			INPUT "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_fn}")
 endmacro()
 
 function(create_default_target_launcher _targetname)
